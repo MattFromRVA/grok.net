@@ -181,10 +181,8 @@ namespace GrokNet
                 {
                     case "int":
                         return Convert.ToInt32(data);
-
                     case "float":
                         return Convert.ToDouble(data);
-
                     case "datetime":
                         return DateTime.Parse(data);
                 }
