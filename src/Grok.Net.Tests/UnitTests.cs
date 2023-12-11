@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using GrokNet;
 using PCRE;
 using Xunit;
@@ -12,6 +13,7 @@ namespace GrokNetTests
     {
         private static Stream ReadCustomFile() =>
             File.OpenRead($"Resources{Path.DirectorySeparatorChar}grok-custom-patterns");
+
         private static Stream ReadCustomFileWithInvalidPatterns() =>
             File.OpenRead($"Resources{Path.DirectorySeparatorChar}grok-custom-patterns-invalid");
 
@@ -394,6 +396,81 @@ namespace GrokNetTests
             Assert.Equal(3, grokResult["comment"].Count());
             Assert.True(grokResult.ContainsKey("email"));
             Assert.True(grokResult.ContainsKey("comment"));
+        }
+
+        [Fact]
+        public void ProcessPatternLine_InvalidFormat_ThrowsFormatException()
+        {
+            // Arrange
+            var grok = new Grok("%{PATTERN:example}");
+            MethodInfo method = typeof(Grok).GetMethod("ProcessPatternLine", BindingFlags.NonPublic | BindingFlags.Instance);
+
+            // Invalid line format (no space)
+            string invalidLine = "invalidLineFormat";
+
+            // Act & Assert
+            TargetInvocationException exception = Assert.Throws<TargetInvocationException>(() =>
+                method.Invoke(grok, new object[] { invalidLine }));
+            Assert.IsType<FormatException>(exception.InnerException);
+            Assert.Contains("Pattern line was not in a correct form (two strings split by space)", exception.InnerException.Message);
+        }
+
+        [Fact]
+        public void ProcessPatternLine_InvalidLineFormat_ThrowsFormatException()
+        {
+            // Arrange
+            var grok = new Grok("%{PATTERN:example}");
+            MethodInfo method = typeof(Grok).GetMethod("ProcessPatternLine", BindingFlags.NonPublic | BindingFlags.Instance);
+
+            // This line format should cause an exception because it doesn't split into two strings
+            string invalidLine = "invalidLine";
+
+            // Act & Assert
+            TargetInvocationException exception = Assert.Throws<TargetInvocationException>(() =>
+                method.Invoke(grok, new object[] { invalidLine }));
+            Assert.IsType<FormatException>(exception.InnerException);
+            Assert.Contains("Pattern line was not in a correct form (two strings split by space)", exception.InnerException.Message);
+        }
+
+        [Fact]
+        public void Parse_WithInvalidTypeData_HandlesConversionFailure()
+        {
+            // Arrange
+            var grok = new Grok("%{WORD:intField:int} %{WORD:floatField:float} %{WORD:dateTimeField:datetime}");
+            string testData = "notAnInt notAFloat notADateTime";
+
+            // Act
+            GrokResult result = grok.Parse(testData);
+
+            // Assert
+            Assert.NotEmpty(result);
+
+            GrokItem intFieldItem = result.FirstOrDefault(item => item.Key == "intField");
+            GrokItem floatFieldItem = result.FirstOrDefault(item => item.Key == "floatField");
+            GrokItem dateTimeFieldItem = result.FirstOrDefault(item => item.Key == "dateTimeField");
+
+            Assert.NotNull(intFieldItem);
+            Assert.NotNull(floatFieldItem);
+            Assert.NotNull(dateTimeFieldItem);
+
+            Assert.Equal("notAnInt", intFieldItem.Value.ToString());
+            Assert.Equal("notAFloat", floatFieldItem.Value.ToString());
+            Assert.Equal("notADateTime", dateTimeFieldItem.Value.ToString());
+        }
+
+        [Fact]
+        public void Parse_WithPatternTriggeringReplaceWithoutName()
+        {
+            // Arrange
+            var grok = new Grok("%{NONEXISTENT}");
+            string text = "text that triggers the pattern";
+
+            // Act
+            GrokResult result = grok.Parse(text);
+
+            // Assert
+            // The result should be empty because the pattern does not correspond to any key in _patterns
+            Assert.Empty(result);
         }
     }
 }
